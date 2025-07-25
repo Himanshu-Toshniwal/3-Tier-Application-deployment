@@ -1,7 +1,7 @@
-// Docker Push Is Not Included Below
+// Docker Push Not Included
 
 pipeline {
-    agent any
+    agent any 
 
     environment {
         DOCKER_IMAGE = "himanshutoshniwal7570/devopsexamapp:latest"
@@ -27,7 +27,7 @@ pipeline {
             steps {
                 dir('backend') {
                     script {
-                        withDockerRegistry(credentialsId: 'docker-creds', toolName: 'docker') {
+                        withDockerRegistry(credentialsId: 'docker', toolName: 'docker') {
                             sh "docker build -t ${DOCKER_IMAGE} ."
                         }
                     }
@@ -38,13 +38,8 @@ pipeline {
         stage('Deploy with Docker Compose') {
             steps {
                 sh '''
-                # Clean up any existing containers
                 docker compose down --remove-orphans || true
-                
-                # Start services with build
                 docker compose up -d --build
-                
-                # Wait for MySQL to be ready
                 echo "Waiting for MySQL to be ready..."
                 timeout 120s bash -c '
                 while ! docker compose exec -T mysql mysqladmin ping -uroot -prootpass --silent;
@@ -52,8 +47,6 @@ pipeline {
                     sleep 5;
                     docker compose logs mysql --tail=5 || true;
                 done'
-                
-                # Additional wait for full initialization
                 sleep 10
                 '''
             }
@@ -92,8 +85,8 @@ pipeline {
     }
 }
 
+// Docker Push Included
 
-// Docker Push Is Included Below
 pipeline {
     agent any
 
@@ -121,7 +114,7 @@ pipeline {
             steps {
                 dir('backend') {
                     script {
-                        withDockerRegistry(credentialsId: 'docker-creds', toolName: 'docker') {
+                        withDockerRegistry(credentialsId: 'docker', toolName: 'docker') {
                             sh "docker build -t ${DOCKER_IMAGE} ."
                         }
                     }
@@ -129,11 +122,10 @@ pipeline {
             }
         }
 
-        // NEW STAGE: Push to Docker Hub
         stage('Push to Docker Hub') {
             steps {
                 script {
-                    withDockerRegistry(credentialsId: 'docker-creds', toolName: 'docker') {
+                    withDockerRegistry(credentialsId: 'docker', toolName: 'docker') {
                         sh """
                         docker tag ${DOCKER_IMAGE} ${DOCKER_IMAGE}
                         docker push ${DOCKER_IMAGE}
@@ -146,13 +138,8 @@ pipeline {
         stage('Deploy with Docker Compose') {
             steps {
                 sh '''
-                # Clean up any existing containers
                 docker compose down --remove-orphans || true
-                
-                # Start services (no --build needed since we pre-built the image)
                 docker compose up -d
-                
-                # Wait for MySQL to be ready
                 echo "Waiting for MySQL to be ready..."
                 timeout 120s bash -c '
                 while ! docker compose exec -T mysql mysqladmin ping -uroot -prootpass --silent;
@@ -160,8 +147,6 @@ pipeline {
                     sleep 5;
                     docker compose logs mysql --tail=5 || true;
                 done'
-                
-                # Additional wait for full initialization
                 sleep 10
                 '''
             }
@@ -183,7 +168,7 @@ pipeline {
         success {
             echo '🚀 Deployment successful!'
             sh 'docker compose ps'
-            sh 'docker images | grep devopsexamapp'  // Verify image exists
+            sh 'docker images | grep devopsexamapp'
         }
         failure {
             echo '❗ Pipeline failed. Check logs above.'
@@ -201,54 +186,3 @@ pipeline {
     }
 }
 
-----------------------------------------------------------K8S-----------------------
-pipeline {
-    agent any
-
-    environment {
-        DOCKER_IMAGE = "himanshutoshniwal7570/devopsexamapp:latest"
-        EKS_CLUSTER = "devopsapp"
-        K8S_NAMESPACE = "devopsexamapp"
-        AWS_REGION = "eu-west-3"  // Update to your region
-    }
-
-    stages {
-        // Existing stages (Git Checkout, Build, Push) remain the same
-        
-        stage('Deploy to EKS') {
-            steps {
-                script {
-                    withCredentials([[
-                        $class: 'AmazonWebServicesCredentialsBinding',
-                        credentialsId: 'aws-creds',
-                        accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                        secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                    ]]) {
-                        sh """
-                        // Configure EKS access
-                        aws eks update-kubeconfig --name ${EKS_CLUSTER} --region ${AWS_REGION}
-                        
-                        // Create namespace if not exists
-                        kubectl create namespace ${K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
-                        
-                        // Create image pull secret
-                        kubectl create secret docker-registry dockerhub-creds \\
-                            --docker-server=https://index.docker.io/v1/ \\
-                            --docker-username=kastrov \\
-                            --docker-password=\$(cat /var/jenkins_home/docker-creds/password) \\
-                            --namespace=${K8S_NAMESPACE} \\
-                            --dry-run=client -o yaml | kubectl apply -f -
-                        
-                        // Apply Kubernetes manifests from root
-                        kubectl apply -f deployment.yml
-                        kubectl apply -f service.yml
-                        
-                        // Verify deployment
-                        kubectl rollout status deployment/devopsexamapp -n ${K8S_NAMESPACE}
-                        """
-                    }
-                }
-            }
-        }
-    }
-}
