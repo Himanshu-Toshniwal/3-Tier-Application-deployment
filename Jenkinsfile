@@ -1,4 +1,4 @@
-#Docker Push Is Not Included Below
+// Docker Push Is Not Included Below
 
 pipeline {
     agent any
@@ -93,7 +93,7 @@ pipeline {
 }
 
 
-#Docker Push Is Included Below
+// Docker Push Is Included Below
 pipeline {
     agent any
 
@@ -225,13 +225,13 @@ pipeline {
                         secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                     ]]) {
                         sh """
-                        # Configure EKS access
+                        // Configure EKS access
                         aws eks update-kubeconfig --name ${EKS_CLUSTER} --region ${AWS_REGION}
                         
-                        # Create namespace if not exists
+                        // Create namespace if not exists
                         kubectl create namespace ${K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
                         
-                        # Create image pull secret
+                        // Create image pull secret
                         kubectl create secret docker-registry dockerhub-creds \\
                             --docker-server=https://index.docker.io/v1/ \\
                             --docker-username=kastrov \\
@@ -239,11 +239,11 @@ pipeline {
                             --namespace=${K8S_NAMESPACE} \\
                             --dry-run=client -o yaml | kubectl apply -f -
                         
-                        # Apply Kubernetes manifests from root
+                        // Apply Kubernetes manifests from root
                         kubectl apply -f deployment.yml
                         kubectl apply -f service.yml
                         
-                        # Verify deployment
+                        // Verify deployment
                         kubectl rollout status deployment/devopsexamapp -n ${K8S_NAMESPACE}
                         """
                     }
